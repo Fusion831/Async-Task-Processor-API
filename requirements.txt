@@ -4,3 +4,9 @@ celery[redis,sqlalchemy]
 redis
 psycopg2-binary
 sqlalchemy
+pytest
+pytest-asyncio
+httpx
+python-dotenv
+requests
+flower

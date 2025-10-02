@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  
+  postgres:
+    image: postgres:15
+    container_name: async_processor_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: async_processor
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - async_processor_network
+
+
+  redis:
+    image: redis:7-alpine
+    container_name: async_processor_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - async_processor_network
+
+  api:
+    build: .
+    container_name: async_processor_api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/async_processor
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    networks:
+      - async_processor_network
+
+
+  celery-worker:
+    build: .
+    container_name: async_processor_worker
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/async_processor
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: celery -A app.celery_app worker --loglevel=info
+    volumes:
+      - .:/app
+    networks:
+      - async_processor_network
+
+volumes:
+  postgres_data:
+
+networks:
+  async_processor_network:
+    driver: bridge
